@@ -7,6 +7,8 @@
 #include <iostream>
 #include <cmath>
 #include <ctime>
+void mouse_button_callback(GLFWwindow*, int, int, int);
+void mouse_callback(GLFWwindow*, double, double);
 
 // --- Data Structure ---
 struct CubeInstance {
@@ -28,6 +30,17 @@ const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 const int cubeCount = 20000;
 std::vector<CubeInstance> cubes;
+//camera
+float deltaTime = 0.0f;
+glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
+glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
+glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+bool firstMouse = true;
+float yaw = -90.0f; // Initialized to -90 degrees to point toward -Z
+float pitch = 0.0f;
+float lastX = 800.0f / 2.0;
+float lastY = 600.0f / 2.0;
+float sensitivity = 0.1f;
 
 // --- 1. Vertex Shader (Cleaned up Raw String) ---
 const char* vertexShaderSource = R"glsl(
@@ -137,7 +150,10 @@ int main() {
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
-
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
+    glfwSetCursorPosCallback(window, mouse_callback);
+    // Tell GLFW to hide the cursor and lock it to the center of the window
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glEnable(GL_DEPTH_TEST);
 
     // Compile logic (Simplified for space)
@@ -198,28 +214,27 @@ int main() {
     glEnableVertexAttribArray(5); glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, sizeof(CubeInstance), (void*)offsetof(CubeInstance, rotation)); glVertexAttribDivisor(5, 1);
 
     float lastFrame = 0.0f;
-    glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
 
     while (!glfwWindowShouldClose(window)) {
         float currentFrame = (float)glfwGetTime();
-        float deltaTime = currentFrame - lastFrame;
+        deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
         processInput(window);
 
         for (auto& cube : cubes) {
-            if(cube.timeAlive>=1000){
-                cube.pos = glm::vec3((rand() % 200 - 100) / 10.0f, (rand() % 200 - 100) / 10.0f, -50.0f);
-                cube.vel = glm::vec3(0.0f, 0.0f, (rand() % 50 + 20) / 10.0f);
-                cube.baseScale = (rand() % 100 + 30) / 800.0f;
-                cube.scale = cube.baseScale;
-                cube.scaleTime = (float)(rand() % 100);
-                cube.pulseSpeed = (rand() % 30) / 10.0f + 1.0f;
-                cube.colorTime = (float)(rand() % 100);
-                cube.rotation = glm::vec3((rand() % 360) * 0.0174f, (rand() % 360) * 0.0174f, (rand() % 360) * 0.0174f);
-				cube.rotVel = glm::vec3(((rand() % 100) / 50.0f - 1.0f), ((rand() % 100) / 50.0f - 1.0f), ((rand() % 100) / 50.0f - 1.0f)) * 0.5f;
-                //continue;
-			}
+   //         if(cube.timeAlive>=1000){
+   // //            cube.pos = glm::vec3((rand() % 200 - 100) / 10.0f, (rand() % 200 - 100) / 10.0f, -50.0f);
+   // //            cube.vel = glm::vec3(0.0f, 0.0f, (rand() % 50 + 20) / 10.0f);
+   // //            cube.baseScale = (rand() % 100 + 30) / 800.0f;
+   // //            cube.scale = cube.baseScale;
+   // //            cube.scaleTime = (float)(rand() % 100);
+   // //            cube.pulseSpeed = (rand() % 30) / 10.0f + 1.0f;
+   // //            cube.colorTime = (float)(rand() % 100);
+   // //            cube.rotation = glm::vec3((rand() % 360) * 0.0174f, (rand() % 360) * 0.0174f, (rand() % 360) * 0.0174f);
+			//	//cube.rotVel = glm::vec3(((rand() % 100) / 50.0f - 1.0f), ((rand() % 100) / 50.0f - 1.0f), ((rand() % 100) / 50.0f - 1.0f)) * 0.5f;
+   //             //continue; //hides the cube (fake delete)
+			//}
             cube.pos += cube.vel * deltaTime * 5.0f;
             if (cube.pos.z > cameraPos.z + 2.0f) cube.pos.z = -50.0f;
             cube.rotation += cube.rotVel * deltaTime * 2.0f;
@@ -231,6 +246,8 @@ int main() {
 			cube.timeAlive += 1;
         }
 
+
+
         glBindBuffer(GL_ARRAY_BUFFER, iVBO);
         glBufferSubData(GL_ARRAY_BUFFER, 0, cubes.size() * sizeof(CubeInstance), &cubes[0]);
 
@@ -239,7 +256,8 @@ int main() {
 
         glUseProgram(shaderProgram);
         glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / SCR_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 view = glm::lookAt(cameraPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
 
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
@@ -259,7 +277,67 @@ int main() {
 
 void processInput(GLFWwindow* window) {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) glfwSetWindowShouldClose(window, true);
+
+    // Movement Polling (Continuous)
+    float cameraSpeed = 5.0f * deltaTime; // Adjust 5.0f to change speed
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        cameraPos += cameraSpeed * glm::vec3(0, 0, -1);
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        cameraPos += cameraSpeed * glm::vec3(0, 0, 1);
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        cameraPos -= cameraSpeed * glm::vec3(1, 0, 0);
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        cameraPos += cameraSpeed * glm::vec3(1, 0, 0);
+
+    // Single Action Polling
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+        // Trigger a jump or a burst of speed
+    }
+
 }
+
+void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
+    float xpos = static_cast<float>(xposIn);
+    float ypos = static_cast<float>(yposIn);
+
+    if (firstMouse) {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+
+    float xoffset = xpos - lastX;
+    float yoffset = lastY - ypos; // Reversed: y-coordinates go from bottom to top
+    lastX = xpos;
+    lastY = ypos;
+
+    xoffset *= sensitivity;
+    yoffset *= sensitivity;
+
+    yaw += xoffset;
+    pitch += yoffset;
+
+    // Constraint: Prevent the camera from flipping over at the top/bottom
+    if (pitch > 89.0f)  pitch = 89.0f;
+    if (pitch < -89.0f) pitch = -89.0f;
+
+    // Convert Euler angles to a 3D vector
+    glm::vec3 front;
+    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front.y = sin(glm::radians(pitch));
+    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    cameraFront = glm::normalize(front);
+}
+void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        double xpos, ypos;
+        glfwGetCursorPos(window, &xpos, &ypos);
+        std::cout << "Left Click at: " << xpos << ", " << ypos << std::endl;
+
+        // Note: To "click" a 3D cube, you would need to implement "Raycasting"
+    }
+}
+
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
