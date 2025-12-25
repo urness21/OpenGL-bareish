@@ -147,6 +147,13 @@
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">stdcpp20</LanguageStandard>
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdcpp20</LanguageStandard>
     </ClCompile>
+    <ClCompile Include="opengl\imgui.cpp" />
+    <ClCompile Include="opengl\imgui_demo.cpp" />
+    <ClCompile Include="opengl\imgui_draw.cpp" />
+    <ClCompile Include="opengl\imgui_impl_glfw.cpp" />
+    <ClCompile Include="opengl\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="opengl\imgui_tables.cpp" />
+    <ClCompile Include="opengl\imgui_widgets.cpp" />
     <ClCompile Include="source.cpp">
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">stdcpp20</LanguageStandard>
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">stdcpp20</LanguageStandard>
@@ -447,6 +454,15 @@
     <ClInclude Include="opengl\glm\vec3.hpp" />
     <ClInclude Include="opengl\glm\vec4.hpp" />
     <ClInclude Include="opengl\glm\vector_relational.hpp" />
+    <ClInclude Include="opengl\imconfig.h" />
+    <ClInclude Include="opengl\imgui.h" />
+    <ClInclude Include="opengl\imgui_impl_glfw.h" />
+    <ClInclude Include="opengl\imgui_impl_opengl3.h" />
+    <ClInclude Include="opengl\imgui_impl_opengl3_loader.h" />
+    <ClInclude Include="opengl\imgui_internal.h" />
+    <ClInclude Include="opengl\imstb_rectpack.h" />
+    <ClInclude Include="opengl\imstb_textedit.h" />
+    <ClInclude Include="opengl\imstb_truetype.h" />
     <ClInclude Include="opengl\khr\khrplatform.h" />
   </ItemGroup>
   <ItemGroup>
@@ -590,6 +606,9 @@
     <None Include="opengl\glm\gtx\vector_angle.inl" />
     <None Include="opengl\glm\gtx\vector_query.inl" />
     <None Include="opengl\glm\gtx\wrap.inl" />
+  </ItemGroup>
+  <ItemGroup>
+    <Library Include="opengl\glfw3.lib" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
