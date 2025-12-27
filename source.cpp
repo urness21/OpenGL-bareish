@@ -7,8 +7,9 @@
 #include <iostream>
 #include <cmath>
 #include <ctime>
-
-// ImGui Includes
+#include <fstream>
+#include <sstream>
+#include <string>
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
@@ -23,6 +24,19 @@ struct CubeInstance {
     glm::vec3 rotVel;
     float colorTime;
     int timeAlive;
+    float health;
+};
+
+struct player {
+    glm::vec3 pos;
+    glm::vec3 front;
+    glm::vec3 up;
+    float yaw;
+    float pitch;
+    glm::vec3 color;
+    int ammo;
+    float lastShotTime;
+    float health;
 };
 
 // Callbacks
@@ -30,111 +44,91 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) { glVi
 void mouse_callback(GLFWwindow* window, double xposIn, double yposIn);
 void processInput(GLFWwindow* window);
 void createCube();
-void createCollider();
-
+void createCollider(glm::vec3);
+void switchCamera();
+void resetPlayer();
+void spawnEnemyAtRadius(float minRadius, float maxRadius);
+void resetAll();
 // Settings
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
-const int cubeCount = 2;
 static int totalClicks = 0;
 std::vector<CubeInstance> cubes;
-
+std::vector<player> players;
+int colliders = 3;
 // Camera
 float deltaTime = 0.0f;
-glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
+glm::vec3 cameraPos = glm::vec3(-3.0f, 0.0f, 0.0f);
+glm::vec3 skyCamera = glm::vec3(0.0f, 30.0f, 0.0f);
+bool usingSkyCamera = false;
 glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
 glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
 bool firstMouse = true;
-float yaw = -90.0f;
+double lcxpos, lcypos;
+float yaw = 0.0f;
 float pitch = 0.0f;
-float lastX = 800.0f / 2.0;
-float lastY = 600.0f / 2.0;
+float lastX = 0.0f;
+float lastY = 0.0f;
 float sensitivity = 0.1f;
+bool isPaused = true;
 
-// --- Shaders ---
-const char* vertexShaderSource = R"glsl(
-#version 330 core
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec3 aNormal;
-layout (location = 2) in vec3 iPos;
-layout (location = 3) in float iScale;
-layout (location = 4) in vec3 iColor;
-layout (location = 5) in vec3 iRotation;
-
-out vec3 FragPos;
-out vec3 Normal;
-out vec3 InstanceColor;
-
-uniform mat4 projection;
-uniform mat4 view;
-
-mat4 getRotationMatrix(vec3 rot) {
-    float cx = cos(rot.x); float sx = sin(rot.x);
-    float cy = cos(rot.y); float sy = sin(rot.y);
-    float cz = cos(rot.z); float sz = sin(rot.z);
-    mat4 rx = mat4(1, 0, 0, 0, 0, cx, sx, 0, 0, -sx, cx, 0, 0, 0, 0, 1);
-    mat4 ry = mat4(cy, 0, -sy, 0, 0, 1, 0, 0, sy, 0, cy, 0, 0, 0, 0, 1);
-    mat4 rz = mat4(cz, sz, 0, 0, -sz, cz, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
-    return rz * ry * rx;
+std::string loadShaderSource(const char* filePath) {
+    std::string content;
+    std::ifstream fileStream(filePath, std::ios::in);
+    if (!fileStream.is_open()) {
+        std::cerr << "Could not read file " << filePath << ". File does not exist." << std::endl;
+        return "";
+    }
+    std::stringstream sstr;
+    sstr << fileStream.rdbuf();
+    content = sstr.str();
+    fileStream.close();
+    return content;
 }
 
-void main() {
-    mat4 rotationMatrix = getRotationMatrix(iRotation);
-    vec3 scaledPos = aPos * iScale;
-    vec4 rotatedPos = rotationMatrix * vec4(scaledPos, 1.0);
-    Normal = normalize(vec3(rotationMatrix * vec4(aNormal, 0.0)));
-    FragPos = rotatedPos.xyz + iPos; 
-    InstanceColor = iColor;
-    gl_Position = projection * view * vec4(FragPos, 1.0);
-}
-)glsl";
-
-const char* fragmentShaderSource = R"glsl(
-#version 330 core
-out vec4 FragColor;
-in vec3 FragPos;
-in vec3 Normal;
-in vec3 InstanceColor;
-
-uniform vec3 lightPos;
-uniform vec3 viewPos;
-uniform vec3 lightColor;
-
-void main() {
-    vec3 ambient = 0.15 * lightColor;
-    vec3 norm = normalize(Normal);
-    vec3 lightDir = normalize(lightPos - FragPos);
-    float diff = max(dot(norm, lightDir), 0.0);
-    vec3 diffuse = diff * lightColor;
-    vec3 viewDir = normalize(viewPos - FragPos);
-    vec3 reflectDir = reflect(-lightDir, norm);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
-    vec3 specular = 0.5 * spec * lightColor;
-    FragColor = vec4((ambient + diffuse + specular) * InstanceColor, 1.0);
-}
-)glsl";
+GLFWwindow* window;
+GLFWmonitor* primaryMonitor;
+int width, height;
 
 int main() {
     srand(static_cast<unsigned int>(time(NULL)));
+    std::string vertShaderStr = loadShaderSource("default.vert");
+    std::string fragShaderStr = loadShaderSource("default.frag");
+    const char* vertexShaderSource = vertShaderStr.c_str();
+    const char* fragmentShaderSource = fragShaderStr.c_str();
 
     // Initialize Cubes
-    createCollider();
+    createCollider(glm::vec3(0.0f, 0.0f, 0.0f));
+    player playerone;
+    playerone.pos = glm::vec3(-3.0f, 0.0f, 0.0f);
+    playerone.front = glm::vec3(0.0f, 0.0f, -1.0f);
+    playerone.up = glm::vec3(0.0f, 1.0f, 0.0f);
+    playerone.yaw = 0.0f;
+    playerone.pitch = 0.0f;
+    playerone.color = glm::vec3(1.0f, 1.0f, 1.0f);
+    playerone.ammo = 30;
+    playerone.health = 1.0f;
+    players.push_back(playerone);
+    cameraPos = playerone.pos;
 
-    // GLFW & OpenGL Setup
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "OpenGL HUD", NULL, NULL);
+    primaryMonitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
+    window = glfwCreateWindow(mode->width, mode->height, "OpenGL HUD", primaryMonitor, NULL);
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
-
+    glfwGetWindowSize(window, &width, &height);
+    lastX = (float)width / 2.0f;
+    lastY = (float)height / 2.0f;
+    mouse_callback(window, lastX, lastY);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glEnable(GL_DEPTH_TEST);
 
-    // --- ImGui Setup ---
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
@@ -142,7 +136,6 @@ int main() {
     ImGui_ImplOpenGL3_Init("#version 330");
     ImGui::StyleColorsDark();
 
-    // Shaders
     unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
     glCompileShader(vertexShader);
@@ -154,7 +147,6 @@ int main() {
     glAttachShader(shaderProgram, fragmentShader);
     glLinkProgram(shaderProgram);
 
-    // Buffer Setup
     float vertices[] = {
         -0.5f,-0.5f,-0.5f, 0,0,-1,  0.5f,-0.5f,-0.5f, 0,0,-1,  0.5f, 0.5f,-0.5f, 0,0,-1,
          0.5f, 0.5f,-0.5f, 0,0,-1, -0.5f, 0.5f,-0.5f, 0,0,-1, -0.5f,-0.5f,-0.5f, 0,0,-1,
@@ -174,7 +166,6 @@ int main() {
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &iVBO);
-
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
@@ -192,29 +183,82 @@ int main() {
 
     float lastFrame = 0.0f;
     while (!glfwWindowShouldClose(window)) {
+        player& p = players[0];
         float currentFrame = (float)glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+        cameraPos = p.pos;
+        cameraFront = p.front;
+        yaw = p.yaw;
+        pitch = p.pitch;
 
         processInput(window);
+        if (!isPaused) {
+            // Physics & Cube Logic
+            for (auto& cube : cubes) {
+                cube.rotation += cube.rotVel * deltaTime;
+                cube.colorTime += deltaTime * 5.0f;
+                // Logic for Stationary Colliders (Now moving toward player)
+                if (cube.timeAlive < 0) {
+                    cube.color = glm::vec3(sin(cube.colorTime) * 0.5 + 0.5, 1.0, sin(cube.colorTime * 4) * 0.5 + 0.5);
+                    // 1. Calculate direction vector (Target - Current)
+                    glm::vec3 direction = p.pos - cube.pos;
+                    // 2. Normalize the direction so the speed is consistent
+                    if (glm::length(direction) > 0.1f) { // Prevent jittering when on top of player
+                        direction = glm::normalize(direction);
+                        float enemySpeed = 3.0f;
+                        cube.pos += direction * enemySpeed * deltaTime;
+                        // 4. Face the player (Optional: Update rotation to look at player)
+                        cube.rotation.y = atan2(direction.x, direction.z);
+                    }
+                }
+                else {
+                    // Logic for moving cubes (bullets)
+                    cube.color = glm::vec3(sin(cube.colorTime) * 0.5 + 0.5, sin(cube.colorTime) * 0.5, sin(cube.colorTime) * 0.5 + 0.5);
+                    cube.pos += cube.vel * deltaTime * 5.0f;
+                    cube.scale -= 0.2f * deltaTime;
+                    cube.timeAlive += 1;
+                    // Collision Detection (Bullet vs Moving Collider)
+                    for (auto& otherCube : cubes) {
+                        if (otherCube.timeAlive < 0) {
+                            float dist = glm::distance(cube.pos, otherCube.pos);
+                            float radiusSum = (cube.scale / 2.0f) + (otherCube.scale / 2.0f);
 
-        for (auto& cube : cubes) {
-            cube.rotation += cube.rotVel * deltaTime;
-            cube.colorTime += deltaTime * 1.5f;
-            if (cube.timeAlive < 0) {
-                cube.color = glm::vec3(sin(cube.colorTime)*0.5+0.5, 1.0, sin(cube.colorTime*4)*0.5+0.5);
-                continue;
+                            if (dist < radiusSum) {
+                                otherCube.health -= 0.1f;
+                                cube.scale = 0.0f;
+                            }
+                        }
+                    }
+                }
             }
-            cube.color = glm::vec3(sin(cube.colorTime) * 0.5 + 0.5, sin(cube.colorTime) * 0.5, sin(cube.colorTime) * 0.5 + 0.5);
-            cube.pos += cube.vel * deltaTime * 5.0f;
-            cube.scale -= 0.2f * deltaTime;
-            cube.timeAlive += 1;
         }
-
-        // Remove cubes that are invisible OR too old
+        // Remove cubes that are invisible OR too old OR dead colliders
         std::erase_if(cubes, [](const CubeInstance& cube) {
-            return cube.scale <= 0.0f;
+            bool isDeadBullet = (cube.scale <= 0.0f && cube.timeAlive >= 0);
+            bool isDeadCollider = (cube.timeAlive < 0 && cube.health <= 0.0f);
+
+            if (isDeadCollider) {
+                // Generate a random position within a 10x10 area
+                float rx = (rand() % 200 / 10.0f) - 10.0f;
+                float ry = (rand() % 100 / 10.0f) - 5.0f;
+                float rz = (rand() % 200 / 10.0f) - 10.0f;
+
+                // We can't call push_back inside erase_if (it breaks the iterator)
+                // So we use a flag or a simple trick: spawn it in the next frame
+                // For now, let's just trigger a createCollider call after erase_if
+                return true;
+            }
+            return isDeadBullet || isDeadCollider;
             });
+
+        // Maintain minimum collider targets at all times
+        int colliderCount = 0;
+        for (auto& c : cubes) if (c.timeAlive < 0) colliderCount++;
+        while (colliderCount < colliders) {
+            spawnEnemyAtRadius(15.0f, 30.0f);
+            colliderCount++;
+        }
 
         glBindBuffer(GL_ARRAY_BUFFER, iVBO);
         glBufferData(GL_ARRAY_BUFFER, cubes.size() * sizeof(CubeInstance), cubes.data(), GL_DYNAMIC_DRAW);
@@ -224,23 +268,79 @@ int main() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(shaderProgram);
-        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / SCR_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+        int fbWidth, fbHeight;
+        glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
+        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)fbWidth / fbHeight, 0.1f, 100.0f);
+        glm::mat4 view;
+        if (usingSkyCamera) {
+            view = glm::lookAt(skyCamera, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
+        }
+        else {
+            view = glm::lookAt(p.pos, p.pos + p.front, p.up);
+        }
+
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
         glUniform3f(glGetUniformLocation(shaderProgram, "viewPos"), cameraPos.x, cameraPos.y, cameraPos.z);
         glUniform3f(glGetUniformLocation(shaderProgram, "lightPos"), 0.0f, 5.0f, 5.0f);
         glUniform3f(glGetUniformLocation(shaderProgram, "lightColor"), 1.0f, 1.0f, 1.0f);
 
+        // 1. Draw Instanced Cubes
+        glUniform1i(glGetUniformLocation(shaderProgram, "isInstanced"), 1);
         glBindVertexArray(VAO);
         glDrawArraysInstanced(GL_TRIANGLES, 0, 36, static_cast<GLsizei>(cubes.size()));
-        // --- ImGui Frame ---
+
+        // 2. Draw Health Bars (Billboards) for Colliders
+        glUniform1i(glGetUniformLocation(shaderProgram, "isInstanced"), 0);
+        for (auto& cube : cubes) {
+            if (cube.health > 0.0f) { //if it has health, draw a healthbar
+                glm::vec3 barPos = cube.pos + glm::vec3(0.0f, cube.scale + 0.2f, 0.0f);
+                glm::mat4 model = glm::mat4(1.0f);
+                model = glm::translate(model, barPos);
+
+                // Billboard Trick: Copy camera rotation
+                model[0][0] = view[0][0]; model[0][1] = view[1][0]; model[0][2] = view[2][0];
+                model[1][0] = view[0][1]; model[1][1] = view[1][1]; model[1][2] = view[2][1];
+                model[2][0] = view[0][2]; model[2][1] = view[1][2]; model[2][2] = view[2][2];
+
+                // Draw Background (Red)
+                glm::mat4 bgModel = glm::scale(model, glm::vec3(1.0f, 0.1f, 0.01f));
+                glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(bgModel));
+                glUniform3f(glGetUniformLocation(shaderProgram, "playerColor"), 1.0f, 0.0f, 0.0f);
+                glDrawArrays(GL_TRIANGLES, 0, 36);
+
+                // Draw Foreground (Green)
+                if (cube.health <= 0.0f) { 
+                    continue; }
+                model = glm::translate(model, glm::vec3(-0.5f * (1.0f - cube.health), 0.0f, 0.01f));
+                glm::mat4 fgModel = glm::scale(model, glm::vec3(cube.health, 0.1f, 0.01f));
+                glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(fgModel));
+                glUniform3f(glGetUniformLocation(shaderProgram, "playerColor"), 0.0f, 1.0f, 0.0f);
+                glDrawArrays(GL_TRIANGLES, 0, 36);
+            }
+        }
+
+        // 3. Draw Player Cube
+        if (usingSkyCamera) {
+            glUniform1i(glGetUniformLocation(shaderProgram, "isInstanced"), 0);
+            glUniform3f(glGetUniformLocation(shaderProgram, "playerColor"), p.color.r, p.color.g, p.color.b);
+            glm::mat4 pModel = glm::mat4(1.0f);
+            pModel = glm::translate(pModel, p.pos);
+            pModel = glm::rotate(pModel, glm::radians(-p.yaw), glm::vec3(0, 1, 0));
+            pModel = glm::rotate(pModel, glm::radians(p.pitch), glm::vec3(0, 0, 1));
+            pModel = glm::scale(pModel, glm::vec3(0.8f));
+            glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(pModel));
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+        }
+
+        // --- ImGui ---
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-
-        // HUD: Top Right
-        ImGui::SetNextWindowPos(ImVec2(SCR_WIDTH - 10, 10), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+        int winWidth, winHeight;
+        glfwGetWindowSize(window, &winWidth, &winHeight);
+        ImVec2 hudPos = ImVec2((float)winWidth - 10.0f, (float)winHeight - 10.0f);
+        ImGui::SetNextWindowPos(hudPos, ImGuiCond_Always, ImVec2(1.0f, 1.0f));
         ImGui::SetNextWindowBgAlpha(0.3f);
         ImGui::Begin("HUD", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
         ImGui::TextColored(ImVec4(0, 1, 1, 1), "COORDINATES");
@@ -249,13 +349,65 @@ int main() {
         ImGui::Text("Y: %.3f", cameraPos.y);
         ImGui::Text("Z: %.3f", cameraPos.z);
         ImGui::Text("FPS: %.1f", io.Framerate);
-		ImGui::Text("Cubes: %d", cubes.size());
-		ImGui::Text("Time: %.2f s", currentFrame);
-        ImGui::Text("Clicks: %d)", totalClicks);
-		ImGui::Separator();
-		ImGui::Text("Yaw: %.2f", yaw);
-		ImGui::Text("Pitch: %.2f", pitch);
-
+        ImGui::Text("Cubes: %d", cubes.size());
+        ImGui::Text("Players: %d", players.size());
+        ImGui::Text("Time: %.2f s", currentFrame);
+        ImGui::Text("Clicks: %d", totalClicks);
+        ImGui::Separator();
+        ImGui::Text("Yaw: %.2f", yaw);
+        ImGui::Text("Pitch: %.2f", pitch);
+        ImGui::Text("Camera: %s", usingSkyCamera ? "Sky" : "PoV");
+        ImGui::Text("last click: %.1f , %.1f", (float)lcxpos, (float)lcypos);
+        ImGui::End();
+        if (!usingSkyCamera) {
+            ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+            ImGui::Begin("Crosshair", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar);
+            ImGui::TextColored(ImVec4(1, 1, 1, 0.8f), "+");
+            ImGui::End();
+        }
+        if (isPaused) {
+            ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+            ImGui::Begin("PAUSE MENU", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+            ImGui::Text("Paused");
+            ImGui::Separator();
+            if (ImGui::Button("Resume", ImVec2(200, 0))) {
+                isPaused = false;
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            }
+            static float tempSense = sensitivity;
+            if (ImGui::SliderFloat("Sensitivity", &tempSense, 0.01f, 1.0f)) {
+                sensitivity = tempSense;
+            }
+            static int tempColliders = colliders;
+            if (ImGui::SliderInt("Colliders", &tempColliders, 0, 50)) {
+                colliders = tempColliders;
+            }
+            if (ImGui::Button("Reset Player", ImVec2(200, 0))) {
+                resetPlayer();
+            }
+            ImGui::Separator();
+            if (ImGui::Button("Exit to Desktop", ImVec2(200, 0))) {
+                glfwSetWindowShouldClose(window, true);
+            }
+            ImGui::End();
+        }
+        // --- Stats Window (Top Left) ---
+        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
+        ImGui::SetNextWindowBgAlpha(0.35f); // Slightly transparent
+        ImGui::Begin("Game Stats", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "BATTLE LOG");
+        ImGui::Separator();
+        // Enemy Kill Counter
+        ImGui::Text("Enemies Defeated: ");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f, 0.2f, 0.2f, 1.0f), "%d", 0);
+        // Calculate Kill Streak or Rank based on placeholder logic
+        const char* rank = "Novice";
+        ImGui::Text("Current Rank: ");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "%s", rank);
+        ImGui::Separator();
+        ImGui::Text("Ammo: %d / 30", p.ammo);
         ImGui::End();
 
         ImGui::Render();
@@ -273,76 +425,164 @@ int main() {
 }
 
 void processInput(GLFWwindow* window) {
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) glfwSetWindowShouldClose(window, true);
-    float speed = 5.0f * deltaTime;
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) cameraPos += speed * cameraFront;
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) cameraPos -= speed * cameraFront;
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * speed;
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * speed;
-    // --- Detect Mouse Held Down ---
-    // Check if the left button is currently pressed
-    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
-        // Use ImGui check to ensure we aren't clicking through UI
-        if (!ImGui::GetIO().WantCaptureMouse) {
-            // This code runs every frame the button is held
-           // createCube();
-            double xpos, ypos;
-            glfwGetCursorPos(window, &xpos, &ypos);
-            totalClicks++;
-            createCube();
-            std::cout << "World Click at: " << xpos << ", " << ypos << std::endl;
+    player& p = players[0];
+    static bool pPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+        if (!pPressed) {
+            isPaused = !isPaused;
+            if (isPaused) {
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            }
+            else {
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                firstMouse = true; // Reset mouse delta to prevent snapping
+            }
+            pPressed = true;
+        }
+    }
+    else {
+        pPressed = false;
+    }
+    if (!isPaused) {
+        float speed = 5.0f * deltaTime;
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) p.pos += speed * p.front;
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) p.pos -= speed * p.front;
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) p.pos -= glm::normalize(glm::cross(p.front, p.up)) * speed;
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) p.pos += glm::normalize(glm::cross(p.front, p.up)) * speed;
+        if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS) p.pos -= speed * p.up;
+        if (glfwGetKey(window, GLFW_KEY_PERIOD) == GLFW_PRESS) resetPlayer();
+        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) p.pos += speed * p.up;
+        static bool rPressed = false;
+        if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
+            if (!rPressed) {
+                resetAll();
+                rPressed = true;
+            }
+        }
+        else {
+            rPressed = false;
+        }
+
+        static bool mPressed = false;
+        if (glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS) {
+            if (!mPressed) {
+                switchCamera();
+                mPressed = true;
+            }
+        }
+        else {
+            mPressed = false;
+        }
+        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+            float currentTime = (float)glfwGetTime();
+            float cooldown = 0.05f;
+            if (!ImGui::GetIO().WantCaptureMouse) {
+                if (currentTime - p.lastShotTime >= cooldown) {
+                    glfwGetCursorPos(window, &lcxpos, &lcypos);
+                    totalClicks++;
+                    createCube();
+                    p.lastShotTime = currentTime;
+                }
+            }
         }
     }
 }
 
+void switchCamera() {
+    usingSkyCamera = !usingSkyCamera;
+}
+
 void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
-    float xpos = (float)xposIn; float ypos = (float)yposIn;
-    if (firstMouse) { lastX = xpos; lastY = ypos; firstMouse = false; }
+    if (isPaused) return;
+    player& p = players[0];
+    float xpos = (float)xposIn;
+    float ypos = (float)yposIn;
+    if (firstMouse) {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
     float xoffset = (xpos - lastX) * sensitivity;
     float yoffset = (lastY - ypos) * sensitivity;
-    lastX = xpos; lastY = ypos;
-    yaw += xoffset; pitch += yoffset;
-    if (pitch > 89.0f) pitch = 89.0f; if (pitch < -89.0f) pitch = -89.0f;
+    lastX = xpos;
+    lastY = ypos;
+    p.yaw += xoffset;
+    if (p.yaw > 360.0f) p.yaw -= 360.0f;
+    if (p.yaw < 0.0f) p.yaw += 360.0f;
+    p.pitch += yoffset;
+    if (p.pitch > 89.0f) p.pitch = 89.0f;
+    if (p.pitch < -89.0f) p.pitch = -89.0f;
+
     glm::vec3 front;
-    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-    front.y = sin(glm::radians(pitch));
-    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-    cameraFront = glm::normalize(front);
+    front.x = cos(glm::radians(p.yaw)) * cos(glm::radians(p.pitch));
+    front.y = sin(glm::radians(p.pitch));
+    front.z = sin(glm::radians(p.yaw)) * cos(glm::radians(p.pitch));
+    p.front = glm::normalize(front);
+}
+void resetAll() {
+    cubes.clear();
+    resetPlayer();
+    for (int i = 0; i < colliders; i++) {
+        spawnEnemyAtRadius(15, 30);
+    }
+    totalClicks = 0;
+}
+void resetPlayer() {
+    player& p = players[0];
+    p.pitch = 0.0f;
+    p.yaw = 0.0f;
+    p.pos = glm::vec3(-3.0f, 0.0f, 0.0f);
+    p.up = glm::vec3(0.0f, 1.0f, 0.0f);
+    p.front = glm::vec3(0.0f, 0.0f, -1.0f);
+    p.ammo = 30;
+    glfwGetWindowSize(window, &width, &height);
+    lastX = (float)width / 2.0f;
+    lastY = (float)height / 2.0f;
+    mouse_callback(window, lastX, lastY);
+    glfwSetCursorPos(window, lastX, lastY);
 }
 
 void createCube() {
     CubeInstance cube;
-    cube.pos = cameraPos + (cameraFront * 2.0f);
-    // Give it a random velocity so it flies away
+    cube.pos = cameraPos + (cameraFront * 1.0f);
     glm::vec3 spread = glm::vec3(
         ((rand() % 100) / 100.0f) - 0.5f,
         ((rand() % 100) / 100.0f) - 0.5f,
         ((rand() % 100) / 100.0f) - 0.5f
     );
-    cube.vel = (cameraFront * 5.0f) + (spread * 1.0f);
-	cube.scale = 0.3f;
+    cube.vel = (cameraFront * 8.0f) + (spread * 1.0f);
+    cube.scale = 0.3f;
     cube.colorTime = (float)(rand() % 100);
     cube.rotation = glm::vec3(0.0f);
     cube.rotVel = glm::vec3((rand() % 100) / 50.0f);
     cube.timeAlive = 0;
-
+    cube.health = 0.0f;
     cubes.push_back(cube);
 }
-void createCollider() {
+
+void createCollider(glm::vec3 pos) {
     CubeInstance cube;
-    cube.pos = cameraPos + (cameraFront * 25.0f);
-    // Give it a random velocity so it flies away
-    glm::vec3 spread = glm::vec3(
-        ((rand() % 100) / 100.0f) - 0.5f,
-        ((rand() % 100) / 100.0f) - 0.5f,
-        ((rand() % 100) / 100.0f) - 0.5f
-    );
-    cube.vel = cameraFront + 0.0f;
+    cube.pos = pos;
+    cube.vel = glm::vec3(0.0f, 0.0f, 0.0f);
     cube.scale = 1.0f;
     cube.colorTime = (float)(rand() % 100);
     cube.rotation = glm::vec3(0.0f);
-    cube.rotVel = glm::vec3((rand() % 100) / 50.0f);
+    cube.rotVel = glm::vec3(0.0f);
     cube.timeAlive = -1;
-
+    cube.health = 1.0f;
     cubes.push_back(cube);
+}
+
+void spawnEnemyAtRadius(float minRadius, float maxRadius) {
+    player& p = players[0];
+    // 1. Get a random angle in radians (0 to 360 degrees)
+    float angle = (float)(rand() % 360) * (3.14159f / 180.0f);
+    // 2. Get a random radius between min and max
+    float radius = minRadius + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (maxRadius - minRadius)));
+    // 3. Convert Polar coordinates to Cartesian (X, Z)
+    float xOffset = cos(angle) * radius;
+    float zOffset = sin(angle) * radius;
+    // 4. Position it relative to the player
+    glm::vec3 spawnPos = p.pos + glm::vec3(xOffset, 0.0f, zOffset);
+    createCollider(spawnPos);
 }
