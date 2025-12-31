@@ -46,6 +46,12 @@
     <ClCompile Include="opengl\imgui_widgets.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="global.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="logic.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="opengl\glad\glad.h">
@@ -954,6 +960,12 @@
     <ClInclude Include="opengl\imgui_impl_opengl3_loader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="common.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="logic.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="opengl\glm\detail\func_common.inl">
@@ -1376,6 +1388,8 @@
     <None Include="opengl\glm\gtx\wrap.inl">
       <Filter>Header Files</Filter>
     </None>
+    <None Include="default.vert" />
+    <None Include="default.frag" />
   </ItemGroup>
   <ItemGroup>
     <Library Include="opengl\glfw3.lib" />

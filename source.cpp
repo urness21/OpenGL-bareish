@@ -1,76 +1,13 @@
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include <vector>
-#include <iostream>
-#include <cmath>
-#include <ctime>
-#include <fstream>
-#include <sstream>
-#include <string>
+#include "common.h"
+#include "logic.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include <iostream>
+#include <string>
+#include <fstream>
+#include <sstream>
 
-// --- Data Structure ---
-struct CubeInstance {
-    glm::vec3 pos;
-    float scale;
-    glm::vec3 color;
-    glm::vec3 rotation;
-    glm::vec3 vel;
-    glm::vec3 rotVel;
-    float colorTime;
-    int timeAlive;
-    float health;
-};
-
-struct player {
-    glm::vec3 pos;
-    glm::vec3 front;
-    glm::vec3 up;
-    float yaw;
-    float pitch;
-    glm::vec3 color;
-    int ammo;
-    float lastShotTime;
-    float health;
-};
-
-// Callbacks
-void framebuffer_size_callback(GLFWwindow* window, int width, int height) { glViewport(0, 0, width, height); }
-void mouse_callback(GLFWwindow* window, double xposIn, double yposIn);
-void processInput(GLFWwindow* window);
-void createCube();
-void createCollider(glm::vec3);
-void switchCamera();
-void resetPlayer();
-void spawnEnemyAtRadius(float minRadius, float maxRadius);
-void resetAll();
-// Settings
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
-static int totalClicks = 0;
-std::vector<CubeInstance> cubes;
-std::vector<player> players;
-int colliders = 3;
-// Camera
-float deltaTime = 0.0f;
-glm::vec3 cameraPos = glm::vec3(-3.0f, 0.0f, 0.0f);
-glm::vec3 skyCamera = glm::vec3(0.0f, 30.0f, 0.0f);
-bool usingSkyCamera = false;
-glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
-glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
-bool firstMouse = true;
-double lcxpos, lcypos;
-float yaw = 0.0f;
-float pitch = 0.0f;
-float lastX = 0.0f;
-float lastY = 0.0f;
-float sensitivity = 0.1f;
-bool isPaused = true;
 
 std::string loadShaderSource(const char* filePath) {
     std::string content;
@@ -86,19 +23,13 @@ std::string loadShaderSource(const char* filePath) {
     return content;
 }
 
-GLFWwindow* window;
-GLFWmonitor* primaryMonitor;
-int width, height;
-
 int main() {
     srand(static_cast<unsigned int>(time(NULL)));
     std::string vertShaderStr = loadShaderSource("default.vert");
     std::string fragShaderStr = loadShaderSource("default.frag");
     const char* vertexShaderSource = vertShaderStr.c_str();
     const char* fragmentShaderSource = fragShaderStr.c_str();
-
-    // Initialize Cubes
-    createCollider(glm::vec3(0.0f, 0.0f, 0.0f));
+    generateGround();
     player playerone;
     playerone.pos = glm::vec3(-3.0f, 0.0f, 0.0f);
     playerone.front = glm::vec3(0.0f, 0.0f, -1.0f);
@@ -110,7 +41,6 @@ int main() {
     playerone.health = 1.0f;
     players.push_back(playerone);
     cameraPos = playerone.pos;
-
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -128,14 +58,12 @@ int main() {
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glEnable(GL_DEPTH_TEST);
-
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
     ImGui::StyleColorsDark();
-
     unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
     glCompileShader(vertexShader);
@@ -146,7 +74,6 @@ int main() {
     glAttachShader(shaderProgram, vertexShader);
     glAttachShader(shaderProgram, fragmentShader);
     glLinkProgram(shaderProgram);
-
     float vertices[] = {
         -0.5f,-0.5f,-0.5f, 0,0,-1,  0.5f,-0.5f,-0.5f, 0,0,-1,  0.5f, 0.5f,-0.5f, 0,0,-1,
          0.5f, 0.5f,-0.5f, 0,0,-1, -0.5f, 0.5f,-0.5f, 0,0,-1, -0.5f,-0.5f,-0.5f, 0,0,-1,
@@ -161,7 +88,6 @@ int main() {
         -0.5f, 0.5f,-0.5f, 0, 1,0,  0.5f, 0.5f,-0.5f, 0, 1,0,  0.5f, 0.5f, 0.5f, 0, 1,0,
          0.5f, 0.5f, 0.5f, 0, 1,0, -0.5f, 0.5f, 0.5f, 0, 1,0, -0.5f, 0.5f,-0.5f, 0, 1,0
     };
-
     unsigned int VBO, VAO, iVBO;
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
@@ -173,14 +99,12 @@ int main() {
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-
     glBindBuffer(GL_ARRAY_BUFFER, iVBO);
     glBufferData(GL_ARRAY_BUFFER, cubes.size() * sizeof(CubeInstance), &cubes[0], GL_DYNAMIC_DRAW);
     glEnableVertexAttribArray(2); glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(CubeInstance), (void*)0); glVertexAttribDivisor(2, 1);
     glEnableVertexAttribArray(3); glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(CubeInstance), (void*)offsetof(CubeInstance, scale)); glVertexAttribDivisor(3, 1);
     glEnableVertexAttribArray(4); glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(CubeInstance), (void*)offsetof(CubeInstance, color)); glVertexAttribDivisor(4, 1);
     glEnableVertexAttribArray(5); glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, sizeof(CubeInstance), (void*)offsetof(CubeInstance, rotation)); glVertexAttribDivisor(5, 1);
-
     float lastFrame = 0.0f;
     while (!glfwWindowShouldClose(window)) {
         player& p = players[0];
@@ -191,67 +115,66 @@ int main() {
         cameraFront = p.front;
         yaw = p.yaw;
         pitch = p.pitch;
-
         processInput(window);
         if (!isPaused) {
             // Physics & Cube Logic
             for (auto& cube : cubes) {
                 cube.rotation += cube.rotVel * deltaTime;
                 cube.colorTime += deltaTime * 5.0f;
-                // Logic for Stationary Colliders (Now moving toward player)
-                if (cube.timeAlive < 0) {
-                    cube.color = glm::vec3(sin(cube.colorTime) * 0.5 + 0.5, 1.0, sin(cube.colorTime * 4) * 0.5 + 0.5);
-                    // 1. Calculate direction vector (Target - Current)
+                if (cube.chases==true) {
+                    //cube.color = glm::vec3(sin(cube.colorTime) * 0.5 + 0.5, 1.0, sin(cube.colorTime * 4) * 0.5 + 0.5);
+                    cube.color = glm::vec3(0.0f, 0.5f, 0.5f);
+                    // Calculate direction vector (Target - Current)
                     glm::vec3 direction = p.pos - cube.pos;
-                    // 2. Normalize the direction so the speed is consistent
-                    if (glm::length(direction) > 0.1f) { // Prevent jittering when on top of player
+                    if (glm::length(direction) > 0.1f) {
                         direction = glm::normalize(direction);
-                        float enemySpeed = 3.0f;
                         cube.pos += direction * enemySpeed * deltaTime;
-                        // 4. Face the player (Optional: Update rotation to look at player)
                         cube.rotation.y = atan2(direction.x, direction.z);
                     }
                 }
                 else {
                     // Logic for moving cubes (bullets)
-                    cube.color = glm::vec3(sin(cube.colorTime) * 0.5 + 0.5, sin(cube.colorTime) * 0.5, sin(cube.colorTime) * 0.5 + 0.5);
-                    cube.pos += cube.vel * deltaTime * 5.0f;
-                    cube.scale -= 0.2f * deltaTime;
-                    cube.timeAlive += 1;
-                    // Collision Detection (Bullet vs Moving Collider)
-                    for (auto& otherCube : cubes) {
-                        if (otherCube.timeAlive < 0) {
-                            float dist = glm::distance(cube.pos, otherCube.pos);
-                            float radiusSum = (cube.scale / 2.0f) + (otherCube.scale / 2.0f);
-
-                            if (dist < radiusSum) {
-                                otherCube.health -= 0.1f;
-                                cube.scale = 0.0f;
+                    if (cube.health == 0.0f) {
+                        cube.color = glm::vec3(sin(cube.colorTime) * 0.5 + 0.5, sin(cube.colorTime) * 0.5, sin(cube.colorTime) * 0.5 + 0.5);
+                        cube.pos += cube.vel * deltaTime * 5.0f;
+                        cube.scale -= 0.2f * deltaTime;
+                        cube.timeAlive += 1;
+                        // Collision Detection (Bullet vs Moving Collider)
+                        for (auto& otherCube : cubes) {
+                            if (otherCube.timeAlive < 0) {
+                                float dist = glm::distance(cube.pos, otherCube.pos);
+                                float radiusSum = (cube.scale / 2.0f) + (otherCube.scale / 2.0f);
+                                if (dist < radiusSum) {
+                                    otherCube.health -= 0.1f;
+                                    cube.scale = 0.0f;
+                                    totalHits++;
+                                    if (otherCube.health <= 0.0f) {
+                                        totalKills++;
+                                    }
+                                }
                             }
                         }
                     }
+                    else {
+                        cube.color = glm::vec3(sin(cube.colorTime) * 0.5 + 0.5, sin(4.0f*cube.colorTime) * 0.5, sin(2.0f*cube.colorTime) * 0.5 + 0.5);
+                        cube.pos += cube.vel * deltaTime * 5.0f;
+                    }
+
                 }
             }
         }
-        // Remove cubes that are invisible OR too old OR dead colliders
         std::erase_if(cubes, [](const CubeInstance& cube) {
             bool isDeadBullet = (cube.scale <= 0.0f && cube.timeAlive >= 0);
             bool isDeadCollider = (cube.timeAlive < 0 && cube.health <= 0.0f);
-
             if (isDeadCollider) {
                 // Generate a random position within a 10x10 area
                 float rx = (rand() % 200 / 10.0f) - 10.0f;
                 float ry = (rand() % 100 / 10.0f) - 5.0f;
                 float rz = (rand() % 200 / 10.0f) - 10.0f;
-
-                // We can't call push_back inside erase_if (it breaks the iterator)
-                // So we use a flag or a simple trick: spawn it in the next frame
-                // For now, let's just trigger a createCollider call after erase_if
                 return true;
             }
             return isDeadBullet || isDeadCollider;
             });
-
         // Maintain minimum collider targets at all times
         int colliderCount = 0;
         for (auto& c : cubes) if (c.timeAlive < 0) colliderCount++;
@@ -259,10 +182,8 @@ int main() {
             spawnEnemyAtRadius(15.0f, 30.0f);
             colliderCount++;
         }
-
         glBindBuffer(GL_ARRAY_BUFFER, iVBO);
         glBufferData(GL_ARRAY_BUFFER, cubes.size() * sizeof(CubeInstance), cubes.data(), GL_DYNAMIC_DRAW);
-
         // Rendering
         glClearColor(0.02f, 0.02f, 0.05f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -273,7 +194,7 @@ int main() {
         glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)fbWidth / fbHeight, 0.1f, 100.0f);
         glm::mat4 view;
         if (usingSkyCamera) {
-            view = glm::lookAt(skyCamera, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
+            view = glm::lookAt(p.pos + glm::vec3(0.0f, 30.0f, 0.01f), p.pos, glm::vec3(0.0f, 0.0f, -1.0f));
         }
         else {
             view = glm::lookAt(p.pos, p.pos + p.front, p.up);
@@ -289,6 +210,7 @@ int main() {
         glUniform1i(glGetUniformLocation(shaderProgram, "isInstanced"), 1);
         glBindVertexArray(VAO);
         glDrawArraysInstanced(GL_TRIANGLES, 0, 36, static_cast<GLsizei>(cubes.size()));
+        glDrawArraysInstanced(GL_TRIANGLES, 0, 36, static_cast<GLsizei>(unbreakables.size()));
 
         // 2. Draw Health Bars (Billboards) for Colliders
         glUniform1i(glGetUniformLocation(shaderProgram, "isInstanced"), 0);
@@ -332,8 +254,6 @@ int main() {
             glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(pModel));
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
-
-        // --- ImGui ---
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
@@ -397,11 +317,18 @@ int main() {
         ImGui::Begin("Game Stats", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
         ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "BATTLE LOG");
         ImGui::Separator();
-        // Enemy Kill Counter
         ImGui::Text("Enemies Defeated: ");
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f, 0.2f, 0.2f, 1.0f), "%d", 0);
-        // Calculate Kill Streak or Rank based on placeholder logic
+        ImGui::TextColored(ImVec4(1.0f, 0.2f, 0.2f, 1.0f), "%d", totalKills);
+        ImGui::Text("Shots Fired: %d", totalClicks);
+        ImGui::Text("Shots Hit: %d", totalHits);
+        if (totalClicks > 0) {
+            float accuracy = ((float)totalHits / (float)totalClicks) * 100.0f;
+            ImGui::Text("Accuracy: %.1f%%", accuracy);
+        }
+        else {
+            ImGui::Text("Accuracy: 0%%");
+        }
         const char* rank = "Novice";
         ImGui::Text("Current Rank: ");
         ImGui::SameLine();
@@ -422,167 +349,4 @@ int main() {
     ImGui::DestroyContext();
     glfwTerminate();
     return 0;
-}
-
-void processInput(GLFWwindow* window) {
-    player& p = players[0];
-    static bool pPressed = false;
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-        if (!pPressed) {
-            isPaused = !isPaused;
-            if (isPaused) {
-                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-            }
-            else {
-                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                firstMouse = true; // Reset mouse delta to prevent snapping
-            }
-            pPressed = true;
-        }
-    }
-    else {
-        pPressed = false;
-    }
-    if (!isPaused) {
-        float speed = 5.0f * deltaTime;
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) p.pos += speed * p.front;
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) p.pos -= speed * p.front;
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) p.pos -= glm::normalize(glm::cross(p.front, p.up)) * speed;
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) p.pos += glm::normalize(glm::cross(p.front, p.up)) * speed;
-        if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS) p.pos -= speed * p.up;
-        if (glfwGetKey(window, GLFW_KEY_PERIOD) == GLFW_PRESS) resetPlayer();
-        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) p.pos += speed * p.up;
-        static bool rPressed = false;
-        if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
-            if (!rPressed) {
-                resetAll();
-                rPressed = true;
-            }
-        }
-        else {
-            rPressed = false;
-        }
-
-        static bool mPressed = false;
-        if (glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS) {
-            if (!mPressed) {
-                switchCamera();
-                mPressed = true;
-            }
-        }
-        else {
-            mPressed = false;
-        }
-        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
-            float currentTime = (float)glfwGetTime();
-            float cooldown = 0.05f;
-            if (!ImGui::GetIO().WantCaptureMouse) {
-                if (currentTime - p.lastShotTime >= cooldown) {
-                    glfwGetCursorPos(window, &lcxpos, &lcypos);
-                    totalClicks++;
-                    createCube();
-                    p.lastShotTime = currentTime;
-                }
-            }
-        }
-    }
-}
-
-void switchCamera() {
-    usingSkyCamera = !usingSkyCamera;
-}
-
-void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
-    if (isPaused) return;
-    player& p = players[0];
-    float xpos = (float)xposIn;
-    float ypos = (float)yposIn;
-    if (firstMouse) {
-        lastX = xpos;
-        lastY = ypos;
-        firstMouse = false;
-    }
-    float xoffset = (xpos - lastX) * sensitivity;
-    float yoffset = (lastY - ypos) * sensitivity;
-    lastX = xpos;
-    lastY = ypos;
-    p.yaw += xoffset;
-    if (p.yaw > 360.0f) p.yaw -= 360.0f;
-    if (p.yaw < 0.0f) p.yaw += 360.0f;
-    p.pitch += yoffset;
-    if (p.pitch > 89.0f) p.pitch = 89.0f;
-    if (p.pitch < -89.0f) p.pitch = -89.0f;
-
-    glm::vec3 front;
-    front.x = cos(glm::radians(p.yaw)) * cos(glm::radians(p.pitch));
-    front.y = sin(glm::radians(p.pitch));
-    front.z = sin(glm::radians(p.yaw)) * cos(glm::radians(p.pitch));
-    p.front = glm::normalize(front);
-}
-void resetAll() {
-    cubes.clear();
-    resetPlayer();
-    for (int i = 0; i < colliders; i++) {
-        spawnEnemyAtRadius(15, 30);
-    }
-    totalClicks = 0;
-}
-void resetPlayer() {
-    player& p = players[0];
-    p.pitch = 0.0f;
-    p.yaw = 0.0f;
-    p.pos = glm::vec3(-3.0f, 0.0f, 0.0f);
-    p.up = glm::vec3(0.0f, 1.0f, 0.0f);
-    p.front = glm::vec3(0.0f, 0.0f, -1.0f);
-    p.ammo = 30;
-    glfwGetWindowSize(window, &width, &height);
-    lastX = (float)width / 2.0f;
-    lastY = (float)height / 2.0f;
-    mouse_callback(window, lastX, lastY);
-    glfwSetCursorPos(window, lastX, lastY);
-}
-
-void createCube() {
-    CubeInstance cube;
-    cube.pos = cameraPos + (cameraFront * 1.0f);
-    glm::vec3 spread = glm::vec3(
-        ((rand() % 100) / 100.0f) - 0.5f,
-        ((rand() % 100) / 100.0f) - 0.5f,
-        ((rand() % 100) / 100.0f) - 0.5f
-    );
-    cube.vel = (cameraFront * 8.0f) + (spread * 1.0f);
-    cube.scale = 0.3f;
-    cube.colorTime = (float)(rand() % 100);
-    cube.rotation = glm::vec3(0.0f);
-    cube.rotVel = glm::vec3((rand() % 100) / 50.0f);
-    cube.timeAlive = 0;
-    cube.health = 0.0f;
-    cubes.push_back(cube);
-}
-
-void createCollider(glm::vec3 pos) {
-    CubeInstance cube;
-    cube.pos = pos;
-    cube.vel = glm::vec3(0.0f, 0.0f, 0.0f);
-    cube.scale = 1.0f;
-    cube.colorTime = (float)(rand() % 100);
-    cube.rotation = glm::vec3(0.0f);
-    cube.rotVel = glm::vec3(0.0f);
-    cube.timeAlive = -1;
-    cube.health = 1.0f;
-    cubes.push_back(cube);
-}
-
-void spawnEnemyAtRadius(float minRadius, float maxRadius) {
-    player& p = players[0];
-    // 1. Get a random angle in radians (0 to 360 degrees)
-    float angle = (float)(rand() % 360) * (3.14159f / 180.0f);
-    // 2. Get a random radius between min and max
-    float radius = minRadius + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (maxRadius - minRadius)));
-    // 3. Convert Polar coordinates to Cartesian (X, Z)
-    float xOffset = cos(angle) * radius;
-    float zOffset = sin(angle) * radius;
-    // 4. Position it relative to the player
-    glm::vec3 spawnPos = p.pos + glm::vec3(xOffset, 0.0f, zOffset);
-    createCollider(spawnPos);
 }

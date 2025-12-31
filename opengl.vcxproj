@@ -64,23 +64,23 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\Users\urnes\source\repos\urness21\OpenGL-bareish\opengl;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\urnes\source\repos\urness21\OpenGL-bareish\opengl;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\Users\urnes\source\repos\OpenGL-bareish\opengl;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Users\urnes\source\repos\OpenGL-bareish\opengl;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\Users\urnes\source\repos\urness21\OpenGL-bareish\opengl;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\urnes\source\repos\urness21\OpenGL-bareish\opengl;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\Users\urnes\source\repos\OpenGL-bareish\opengl;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Users\urnes\source\repos\OpenGL-bareish\opengl;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\Users\urnes\source\repos\urness21\OpenGL-bareish\opengl;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\urnes\source\repos\urness21\OpenGL-bareish\opengl;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\Users\urnes\source\repos\OpenGL-bareish\opengl;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Users\urnes\source\repos\OpenGL-bareish\opengl;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\Users\urnes\source\repos\urness21\OpenGL-bareish\opengl;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\urnes\source\repos\urness21\OpenGL-bareish\opengl;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\Users\urnes\source\repos\OpenGL-bareish\opengl;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Users\urnes\source\repos\OpenGL-bareish\opengl;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -140,6 +140,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="glad.c" />
+    <ClCompile Include="global.cpp" />
+    <ClCompile Include="logic.cpp" />
     <ClCompile Include="opengl\glm\detail\glm.cpp" />
     <ClCompile Include="opengl\glm\glm.cppm">
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">stdcpp20</LanguageStandard>
@@ -162,6 +164,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="logic.h" />
     <ClInclude Include="opengl\glad\glad.h" />
     <ClInclude Include="opengl\glfw\glfw3.h" />
     <ClInclude Include="opengl\glfw\glfw3native.h" />
@@ -464,8 +467,11 @@
     <ClInclude Include="opengl\imstb_textedit.h" />
     <ClInclude Include="opengl\imstb_truetype.h" />
     <ClInclude Include="opengl\khr\khrplatform.h" />
+    <ClInclude Include="common.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="default.frag" />
+    <None Include="default.vert" />
     <None Include="opengl\glm\detail\func_common.inl" />
     <None Include="opengl\glm\detail\func_common_simd.inl" />
     <None Include="opengl\glm\detail\func_exponential.inl" />
