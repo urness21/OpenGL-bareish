@@ -7,29 +7,14 @@
 #include <string>
 #include <fstream>
 #include <sstream>
-
-
-std::string loadShaderSource(const char* filePath) {
-    std::string content;
-    std::ifstream fileStream(filePath, std::ios::in);
-    if (!fileStream.is_open()) {
-        std::cerr << "Could not read file " << filePath << ". File does not exist." << std::endl;
-        return "";
-    }
-    std::stringstream sstr;
-    sstr << fileStream.rdbuf();
-    content = sstr.str();
-    fileStream.close();
-    return content;
-}
+#include "Shader.h"
+#include "Shapes.h"
+#include "Mesh.h"
 
 int main() {
     srand(static_cast<unsigned int>(time(NULL)));
-    std::string vertShaderStr = loadShaderSource("default.vert");
-    std::string fragShaderStr = loadShaderSource("default.frag");
-    const char* vertexShaderSource = vertShaderStr.c_str();
-    const char* fragmentShaderSource = fragShaderStr.c_str();
     generateGround();
+
     player playerone;
     playerone.pos = glm::vec3(-3.0f, 0.0f, 0.0f);
     playerone.front = glm::vec3(0.0f, 0.0f, -1.0f);
@@ -41,15 +26,18 @@ int main() {
     playerone.health = 1.0f;
     players.push_back(playerone);
     cameraPos = playerone.pos;
+
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
     primaryMonitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
     window = glfwCreateWindow(mode->width, mode->height, "OpenGL HUD", primaryMonitor, NULL);
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
+
     glfwGetWindowSize(window, &width, &height);
     lastX = (float)width / 2.0f;
     lastY = (float)height / 2.0f;
@@ -58,54 +46,27 @@ int main() {
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glEnable(GL_DEPTH_TEST);
+
+    // Initialize Shaders
+    Shader cubeShader("default.vert", "default.frag");
+    Shader hudShader("rectangle.vert", "rectangle.frag");
+
+    // Initialize ImGui
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
     ImGui::StyleColorsDark();
-    unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-    glCompileShader(vertexShader);
-    unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-    glCompileShader(fragmentShader);
-    unsigned int shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    glLinkProgram(shaderProgram);
-    float vertices[] = {
-        -0.5f,-0.5f,-0.5f, 0,0,-1,  0.5f,-0.5f,-0.5f, 0,0,-1,  0.5f, 0.5f,-0.5f, 0,0,-1,
-         0.5f, 0.5f,-0.5f, 0,0,-1, -0.5f, 0.5f,-0.5f, 0,0,-1, -0.5f,-0.5f,-0.5f, 0,0,-1,
-        -0.5f,-0.5f, 0.5f, 0,0, 1,  0.5f,-0.5f, 0.5f, 0,0, 1,  0.5f, 0.5f, 0.5f, 0,0, 1,
-         0.5f, 0.5f, 0.5f, 0,0, 1, -0.5f, 0.5f, 0.5f, 0,0, 1, -0.5f,-0.5f, 0.5f, 0,0, 1,
-        -0.5f, 0.5f, 0.5f,-1,0, 0, -0.5f, 0.5f,-0.5f,-1,0, 0, -0.5f,-0.5f,-0.5f,-1,0, 0,
-        -0.5f,-0.5f,-0.5f,-1,0, 0, -0.5f,-0.5f, 0.5f,-1,0, 0, -0.5f, 0.5f, 0.5f,-1,0, 0,
-         0.5f, 0.5f, 0.5f, 1,0, 0,  0.5f, 0.5f,-0.5f, 1,0, 0,  0.5f,-0.5f,-0.5f, 1,0, 0,
-         0.5f,-0.5f,-0.5f, 1,0, 0,  0.5f,-0.5f, 0.5f, 1,0, 0,  0.5f, 0.5f, 0.5f, 1,0, 0,
-        -0.5f,-0.5f,-0.5f, 0,-1,0,  0.5f,-0.5f,-0.5f, 0,-1,0,  0.5f,-0.5f, 0.5f, 0,-1,0,
-         0.5f,-0.5f, 0.5f, 0,-1,0, -0.5f,-0.5f, 0.5f, 0,-1,0, -0.5f,-0.5f,-0.5f, 0,-1,0,
-        -0.5f, 0.5f,-0.5f, 0, 1,0,  0.5f, 0.5f,-0.5f, 0, 1,0,  0.5f, 0.5f, 0.5f, 0, 1,0,
-         0.5f, 0.5f, 0.5f, 0, 1,0, -0.5f, 0.5f, 0.5f, 0, 1,0, -0.5f, 0.5f,-0.5f, 0, 1,0
-    };
-    unsigned int VBO, VAO, iVBO;
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-    glGenBuffers(1, &iVBO);
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    glBindBuffer(GL_ARRAY_BUFFER, iVBO);
-    glBufferData(GL_ARRAY_BUFFER, cubes.size() * sizeof(CubeInstance), &cubes[0], GL_DYNAMIC_DRAW);
-    glEnableVertexAttribArray(2); glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(CubeInstance), (void*)0); glVertexAttribDivisor(2, 1);
-    glEnableVertexAttribArray(3); glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(CubeInstance), (void*)offsetof(CubeInstance, scale)); glVertexAttribDivisor(3, 1);
-    glEnableVertexAttribArray(4); glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(CubeInstance), (void*)offsetof(CubeInstance, color)); glVertexAttribDivisor(4, 1);
-    glEnableVertexAttribArray(5); glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, sizeof(CubeInstance), (void*)offsetof(CubeInstance, rotation)); glVertexAttribDivisor(5, 1);
+
+    // --- Initialize Meshes ---
+    // 3D instanced Mesh for cubes, Players, and Healthbars
+    Mesh cubeMesh(Shapes::cubeVertices, sizeof(Shapes::cubeVertices), { 3, 3 }, sizeof(CubeInstance));
+    // 2D Mesh for HUD
+    Mesh hudMesh(Shapes::rectangleVertices, sizeof(Shapes::rectangleVertices), { 3 });
+
     float lastFrame = 0.0f;
+
     while (!glfwWindowShouldClose(window)) {
         player& p = players[0];
         float currentFrame = (float)glfwGetTime();
@@ -115,16 +76,16 @@ int main() {
         cameraFront = p.front;
         yaw = p.yaw;
         pitch = p.pitch;
+
         processInput(window);
+
         if (!isPaused) {
-            // Physics & Cube Logic
+            // Logic
             for (auto& cube : cubes) {
                 cube.rotation += cube.rotVel * deltaTime;
                 cube.colorTime += deltaTime * 5.0f;
-                if (cube.chases==true) {
-                    //cube.color = glm::vec3(sin(cube.colorTime) * 0.5 + 0.5, 1.0, sin(cube.colorTime * 4) * 0.5 + 0.5);
+                if (cube.chases == true) {
                     cube.color = glm::vec3(0.0f, 0.5f, 0.5f);
-                    // Calculate direction vector (Target - Current)
                     glm::vec3 direction = p.pos - cube.pos;
                     if (glm::length(direction) > 0.1f) {
                         direction = glm::normalize(direction);
@@ -133,13 +94,11 @@ int main() {
                     }
                 }
                 else {
-                    // Logic for moving cubes (bullets)
                     if (cube.health == 0.0f) {
                         cube.color = glm::vec3(sin(cube.colorTime) * 0.5 + 0.5, sin(cube.colorTime) * 0.5, sin(cube.colorTime) * 0.5 + 0.5);
                         cube.pos += cube.vel * deltaTime * 5.0f;
                         cube.scale -= 0.2f * deltaTime;
                         cube.timeAlive += 1;
-                        // Collision Detection (Bullet vs Moving Collider)
                         for (auto& otherCube : cubes) {
                             if (otherCube.timeAlive < 0) {
                                 float dist = glm::distance(cube.pos, otherCube.pos);
@@ -156,104 +115,94 @@ int main() {
                         }
                     }
                     else {
-                        cube.color = glm::vec3(sin(cube.colorTime) * 0.5 + 0.5, sin(4.0f*cube.colorTime) * 0.5, sin(2.0f*cube.colorTime) * 0.5 + 0.5);
+                        cube.color = glm::vec3(sin(cube.colorTime) * 0.5 + 0.5, sin(4.0f * cube.colorTime) * 0.5, sin(2.0f * cube.colorTime) * 0.5 + 0.5);
                         cube.pos += cube.vel * deltaTime * 5.0f;
                     }
-
                 }
             }
         }
+
         std::erase_if(cubes, [](const CubeInstance& cube) {
             bool isDeadBullet = (cube.scale <= 0.0f && cube.timeAlive >= 0);
             bool isDeadCollider = (cube.timeAlive < 0 && cube.health <= 0.0f);
-            if (isDeadCollider) {
-                // Generate a random position within a 10x10 area
-                float rx = (rand() % 200 / 10.0f) - 10.0f;
-                float ry = (rand() % 100 / 10.0f) - 5.0f;
-                float rz = (rand() % 200 / 10.0f) - 10.0f;
-                return true;
-            }
             return isDeadBullet || isDeadCollider;
             });
-        // Maintain minimum collider targets at all times
+
         int colliderCount = 0;
         for (auto& c : cubes) if (c.timeAlive < 0) colliderCount++;
         while (colliderCount < colliders) {
             spawnEnemyAtRadius(15.0f, 30.0f);
             colliderCount++;
         }
-        glBindBuffer(GL_ARRAY_BUFFER, iVBO);
-        glBufferData(GL_ARRAY_BUFFER, cubes.size() * sizeof(CubeInstance), cubes.data(), GL_DYNAMIC_DRAW);
-        // Rendering
+
+        // --- Rendering ---
         glClearColor(0.02f, 0.02f, 0.05f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glUseProgram(shaderProgram);
         int fbWidth, fbHeight;
         glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
         glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)fbWidth / fbHeight, 0.1f, 100.0f);
-        glm::mat4 view;
-        if (usingSkyCamera) {
-            view = glm::lookAt(p.pos + glm::vec3(0.0f, 30.0f, 0.01f), p.pos, glm::vec3(0.0f, 0.0f, -1.0f));
-        }
-        else {
-            view = glm::lookAt(p.pos, p.pos + p.front, p.up);
-        }
+        glm::mat4 view = (usingSkyCamera) ?
+            glm::lookAt(p.pos + glm::vec3(0.0f, 30.0f, 0.01f), p.pos, glm::vec3(0.0f, 0.0f, -1.0f)) :
+            glm::lookAt(p.pos, p.pos + p.front, p.up);
 
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
-        glUniform3f(glGetUniformLocation(shaderProgram, "viewPos"), cameraPos.x, cameraPos.y, cameraPos.z);
-        glUniform3f(glGetUniformLocation(shaderProgram, "lightPos"), 0.0f, 5.0f, 5.0f);
-        glUniform3f(glGetUniformLocation(shaderProgram, "lightColor"), 1.0f, 1.0f, 1.0f);
+        // 1. Draw HUD
+        glDisable(GL_DEPTH_TEST);
+        hudShader.use();
+        hudMesh.draw(0, GL_TRIANGLE_STRIP);
+        glEnable(GL_DEPTH_TEST);
 
-        // 1. Draw Instanced Cubes
-        glUniform1i(glGetUniformLocation(shaderProgram, "isInstanced"), 1);
-        glBindVertexArray(VAO);
-        glDrawArraysInstanced(GL_TRIANGLES, 0, 36, static_cast<GLsizei>(cubes.size()));
-        glDrawArraysInstanced(GL_TRIANGLES, 0, 36, static_cast<GLsizei>(unbreakables.size()));
+        // 2. Draw Enemy Swarm (Instanced)
+        cubeShader.use();
+        cubeShader.setMat4("projection", projection);
+        cubeShader.setMat4("view", view);
+        cubeShader.setVec3("viewPos", cameraPos);
+        cubeShader.setVec3("lightPos", glm::vec3(0.0f, 5.0f, 5.0f));
+        cubeShader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
+        cubeShader.setInt("isInstanced", 1);
 
-        // 2. Draw Health Bars (Billboards) for Colliders
-        glUniform1i(glGetUniformLocation(shaderProgram, "isInstanced"), 0);
+        cubeMesh.updateInstances(cubes.data(), cubes.size() * sizeof(CubeInstance));
+        cubeMesh.draw(static_cast<int>(cubes.size()));
+
+        // 3. Draw Health Bars (Billboards)
+        cubeShader.setInt("isInstanced", 0);
         for (auto& cube : cubes) {
-            if (cube.health > 0.0f) { //if it has health, draw a healthbar
+            if (cube.health > 0.0f) {
                 glm::vec3 barPos = cube.pos + glm::vec3(0.0f, cube.scale + 0.2f, 0.0f);
                 glm::mat4 model = glm::mat4(1.0f);
                 model = glm::translate(model, barPos);
-
-                // Billboard Trick: Copy camera rotation
                 model[0][0] = view[0][0]; model[0][1] = view[1][0]; model[0][2] = view[2][0];
                 model[1][0] = view[0][1]; model[1][1] = view[1][1]; model[1][2] = view[2][1];
                 model[2][0] = view[0][2]; model[2][1] = view[1][2]; model[2][2] = view[2][2];
 
-                // Draw Background (Red)
+                // Red Background
                 glm::mat4 bgModel = glm::scale(model, glm::vec3(1.0f, 0.1f, 0.01f));
-                glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(bgModel));
-                glUniform3f(glGetUniformLocation(shaderProgram, "playerColor"), 1.0f, 0.0f, 0.0f);
-                glDrawArrays(GL_TRIANGLES, 0, 36);
+                cubeShader.setMat4("model", bgModel);
+                cubeShader.setVec3("playerColor", glm::vec3(1.0f, 0.0f, 0.0f));
+                cubeMesh.draw();
 
-                // Draw Foreground (Green)
-                if (cube.health <= 0.0f) { 
-                    continue; }
-                model = glm::translate(model, glm::vec3(-0.5f * (1.0f - cube.health), 0.0f, 0.01f));
-                glm::mat4 fgModel = glm::scale(model, glm::vec3(cube.health, 0.1f, 0.01f));
-                glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(fgModel));
-                glUniform3f(glGetUniformLocation(shaderProgram, "playerColor"), 0.0f, 1.0f, 0.0f);
-                glDrawArrays(GL_TRIANGLES, 0, 36);
+                // Green Foreground
+                glm::mat4 fgBase = glm::translate(model, glm::vec3(-0.5f * (1.0f - cube.health), 0.0f, 0.01f));
+                glm::mat4 fgModel = glm::scale(fgBase, glm::vec3(cube.health, 0.1f, 0.01f));
+                cubeShader.setMat4("model", fgModel);
+                cubeShader.setVec3("playerColor", glm::vec3(0.0f, 1.0f, 0.0f));
+                cubeMesh.draw();
             }
         }
 
-        // 3. Draw Player Cube
+        // 4. Draw Player Cube
         if (usingSkyCamera) {
-            glUniform1i(glGetUniformLocation(shaderProgram, "isInstanced"), 0);
-            glUniform3f(glGetUniformLocation(shaderProgram, "playerColor"), p.color.r, p.color.g, p.color.b);
+            cubeShader.setInt("isInstanced", 0);
+            cubeShader.setVec3("playerColor", p.color);
             glm::mat4 pModel = glm::mat4(1.0f);
             pModel = glm::translate(pModel, p.pos);
-            pModel = glm::rotate(pModel, glm::radians(-p.yaw), glm::vec3(0, 1, 0));
-            pModel = glm::rotate(pModel, glm::radians(p.pitch), glm::vec3(0, 0, 1));
+            pModel = glm::rotate(pModel, glm::radians(-p.yaw), glm::vec3(0.0f, 1.0f, 0.0f));
+            pModel = glm::rotate(pModel, glm::radians(p.pitch), glm::vec3(0.0f, 0.0f, 1.0f));
             pModel = glm::scale(pModel, glm::vec3(0.8f));
-            glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(pModel));
-            glDrawArrays(GL_TRIANGLES, 0, 36);
+            cubeShader.setMat4("model", pModel);
+            cubeMesh.draw();
         }
+
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
@@ -336,17 +285,15 @@ int main() {
         ImGui::Separator();
         ImGui::Text("Ammo: %d / 30", p.ammo);
         ImGui::End();
-
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
-
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
     glfwTerminate();
     return 0;
+
 }

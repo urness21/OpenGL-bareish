@@ -52,6 +52,12 @@
     <ClCompile Include="logic.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Shader.h">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Mesh.h">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="opengl\glad\glad.h">
@@ -966,6 +972,9 @@
     <ClInclude Include="logic.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Shapes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="opengl\glm\detail\func_common.inl">
@@ -1390,6 +1399,8 @@
     </None>
     <None Include="default.vert" />
     <None Include="default.frag" />
+    <None Include="rectangle.frag" />
+    <None Include="rectangle.vert" />
   </ItemGroup>
   <ItemGroup>
     <Library Include="opengl\glfw3.lib" />
