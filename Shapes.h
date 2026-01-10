@@ -25,6 +25,14 @@ namespace Shapes {
         -1.0f, -1.0f, 0.0f, // Bottom Left
          1.0f, -1.0f, 0.0f  // Bottom Right
     };
+
+    static float quadVertices[] = {
+        // Positions          // Normals (pointing Up)
+        -0.5f, 0.0f,  0.5f,   0.0f, 1.0f, 0.0f,
+         0.5f, 0.0f,  0.5f,   0.0f, 1.0f, 0.0f,
+        -0.5f, 0.0f, -0.5f,   0.0f, 1.0f, 0.0f,
+         0.5f, 0.0f, -0.5f,   0.0f, 1.0f, 0.0f
+    };
 }
 
 #endif

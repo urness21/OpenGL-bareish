@@ -10,68 +10,58 @@
 #include "Shader.h"
 #include "Shapes.h"
 #include "Mesh.h"
+#include "objModel.h"
 
 int main() {
     srand(static_cast<unsigned int>(time(NULL)));
-    generateGround();
-
-    player playerone;
-    playerone.pos = glm::vec3(-3.0f, 0.0f, 0.0f);
-    playerone.front = glm::vec3(0.0f, 0.0f, -1.0f);
-    playerone.up = glm::vec3(0.0f, 1.0f, 0.0f);
-    playerone.yaw = 0.0f;
-    playerone.pitch = 0.0f;
-    playerone.color = glm::vec3(1.0f, 1.0f, 1.0f);
-    playerone.ammo = 30;
-    playerone.health = 1.0f;
-    players.push_back(playerone);
-    cameraPos = playerone.pos;
-
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-    primaryMonitor = glfwGetPrimaryMonitor();
-    const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
-    window = glfwCreateWindow(mode->width, mode->height, "OpenGL HUD", primaryMonitor, NULL);
+    glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);
+    window = glfwCreateWindow(width, height, "OpenGL HUD", NULL, NULL);
+    if (!window) {
+        const char* description;
+        int code = glfwGetError(&description);
+        std::cout << "Window Creation Failed: " << description << " (Code: " << code << ")" << std::endl;
+        glfwTerminate();
+        return -1;
+    }
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
-
-    glfwGetWindowSize(window, &width, &height);
+    glfwGetFramebufferSize(window, &width, &height);
+    glViewport(0, 0, width, height);
     lastX = (float)width / 2.0f;
     lastY = (float)height / 2.0f;
     mouse_callback(window, lastX, lastY);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glEnable(GL_DEPTH_TEST);
-
-    // Initialize Shaders
-    Shader cubeShader("default.vert", "default.frag");
-    Shader hudShader("rectangle.vert", "rectangle.frag");
-
-    // Initialize ImGui
+    Shader cubeShader("shaders/default.vert", "shaders/default.frag");
+    Shader hudShader("shaders/rectangle.vert", "shaders/rectangle.frag");
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
     ImGui::StyleColorsDark();
-
-    // --- Initialize Meshes ---
-    // 3D instanced Mesh for cubes, Players, and Healthbars
     Mesh cubeMesh(Shapes::cubeVertices, sizeof(Shapes::cubeVertices), { 3, 3 }, sizeof(CubeInstance));
-    // 2D Mesh for HUD
     Mesh hudMesh(Shapes::rectangleVertices, sizeof(Shapes::rectangleVertices), { 3 });
-
+    Mesh planeMesh(Shapes::quadVertices, sizeof(Shapes::quadVertices), { 3, 3 });
+    objModel myModel("models/projectile.obj");
+    objModel pillar("models/pillar.obj");
+    objModel floater("models/floater.obj");
+    objModel emers("models/emers.obj");
     float lastFrame = 0.0f;
-
+    initGame();
     while (!glfwWindowShouldClose(window)) {
         player& p = players[0];
         float currentFrame = (float)glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+
         cameraPos = p.pos;
         cameraFront = p.front;
         yaw = p.yaw;
@@ -79,53 +69,79 @@ int main() {
 
         processInput(window);
 
+
+        glm::mat4 ground = glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0));
+        glm::vec3 groundPos = glm::vec3(ground[3]);
+        ground = glm::scale(ground, glm::vec3(60.0f, 1.0f, 60.0f));
+
+        // --- 1. PURE LOGIC STEP ---
         if (!isPaused) {
-            // Logic
-            for (auto& cube : cubes) {
-                cube.rotation += cube.rotVel * deltaTime;
-                cube.colorTime += deltaTime * 5.0f;
-                if (cube.chases == true) {
-                    cube.color = glm::vec3(0.0f, 0.5f, 0.5f);
-                    glm::vec3 direction = p.pos - cube.pos;
-                    if (glm::length(direction) > 0.1f) {
-                        direction = glm::normalize(direction);
-                        cube.pos += direction * enemySpeed * deltaTime;
-                        cube.rotation.y = atan2(direction.x, direction.z);
-                    }
+            handleGravity();
+     
+            for (auto& proj : projectiles) {
+                glm::vec3 movement = proj.vel * deltaTime;
+                proj.pos += movement;
+                proj.rotation += proj.rotVel * deltaTime;
+                proj.distanceTraveled += glm::length(movement);
+                if (proj.distanceTraveled >= 75.0f) {
+                    createSplash(proj.pos, glm::vec3(rand(), rand(), rand()));
+                    proj.dmg = 0; // Mark for deletion
+                    continue;     // Skip collision check since it's dead
                 }
-                else {
-                    if (cube.health == 0.0f) {
-                        cube.color = glm::vec3(sin(cube.colorTime) * 0.5 + 0.5, sin(cube.colorTime) * 0.5, sin(cube.colorTime) * 0.5 + 0.5);
-                        cube.pos += cube.vel * deltaTime * 5.0f;
-                        cube.scale -= 0.2f * deltaTime;
-                        cube.timeAlive += 1;
-                        for (auto& otherCube : cubes) {
-                            if (otherCube.timeAlive < 0) {
-                                float dist = glm::distance(cube.pos, otherCube.pos);
-                                float radiusSum = (cube.scale / 2.0f) + (otherCube.scale / 2.0f);
-                                if (dist < radiusSum) {
-                                    otherCube.health -= 0.1f;
-                                    cube.scale = 0.0f;
-                                    totalHits++;
-                                    if (otherCube.health <= 0.0f) {
-                                        totalKills++;
-                                    }
-                                }
-                            }
+                for (auto& enemy : cubes) {
+                    if (enemy.chases) {
+                        float dist = glm::distance(proj.pos, enemy.pos);
+                        if (dist < (enemy.scale)) {
+                            enemy.health -= proj.dmg;
+                            proj.dmg = 0; // Mark projectile for deletion
+                            createSplash(proj.pos, glm::vec3(0.7f, 0.3f, 0.0f));
                         }
                     }
-                    else {
-                        cube.color = glm::vec3(sin(cube.colorTime) * 0.5 + 0.5, sin(4.0f * cube.colorTime) * 0.5, sin(2.0f * cube.colorTime) * 0.5 + 0.5);
-                        cube.pos += cube.vel * deltaTime * 5.0f;
+                }
+                for (auto& emerson : emersons) {
+                    glm::mat4 modelMatrix = glm::mat4(1.0f);
+                    modelMatrix = glm::translate(modelMatrix, emerson.pos);
+                    modelMatrix = glm::rotate(modelMatrix, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                    float currentAngle = (float)glfwGetTime() * 2.0f;
+                    modelMatrix = glm::rotate(modelMatrix, currentAngle, glm::vec3(0.0f, 0.0f, 1.0f));
+                    glm::mat4 invModel = glm::inverse(modelMatrix);
+                    glm::vec3 localProjPos = glm::vec3(invModel * glm::vec4(proj.pos, 1.0f));
+                    bool hit = (localProjPos.x >= emers.minBounds.x && localProjPos.x <= emers.maxBounds.x) &&
+                        (localProjPos.y >= emers.minBounds.y && localProjPos.y <= emers.maxBounds.y) &&
+                        (localProjPos.z >= emers.minBounds.z && localProjPos.z <= emers.maxBounds.z);
+
+                    if (hit) {
+                        emerson.health -= proj.dmg;
+                        proj.dmg = 0;
+                        createSplash(proj.pos, glm::vec3(0.7f, 0.3f, 0.0f));
                     }
                 }
             }
+            std::erase_if(projectiles, [](const projectile& p) { return p.dmg <= 0; });
         }
+        for (auto& p : splashParticles) {
+            p.vel.y += gravity * deltaTime; // Apply gravity to splash too
+            p.pos += p.vel * deltaTime;
+            p.life -= deltaTime * 1.5f;    // Particles last about 0.6 seconds
+            if (p.pos.y < groundy) {
+                // Snap to surface so it doesn't get stuck underground
+                p.pos.y = groundy;
 
+                // Invert Y velocity and reduce it (0.4f = 40% energy kept)
+                p.vel.y = -p.vel.y * 0.4f;
+
+                // Friction: Slow down horizontal movement on impact
+                p.vel.x *= 0.8f;
+                p.vel.z *= 0.8f;
+            }
+        }
+        // Remove dead particles
+        std::erase_if(splashParticles, [](const SplashParticle& p) {
+            return p.life <= 0.0f;
+            });
+        // Cleanup and Spawning
         std::erase_if(cubes, [](const CubeInstance& cube) {
-            bool isDeadBullet = (cube.scale <= 0.0f && cube.timeAlive >= 0);
-            bool isDeadCollider = (cube.timeAlive < 0 && cube.health <= 0.0f);
-            return isDeadBullet || isDeadCollider;
+            return (cube.scale <= 0.0f && cube.timeAlive >= 0) || (cube.timeAlive < 0 && cube.health <= 0.0f);
             });
 
         int colliderCount = 0;
@@ -135,7 +151,7 @@ int main() {
             colliderCount++;
         }
 
-        // --- Rendering ---
+        // --- 2. RENDERING STEP ---
         glClearColor(0.02f, 0.02f, 0.05f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -146,23 +162,103 @@ int main() {
             glm::lookAt(p.pos + glm::vec3(0.0f, 30.0f, 0.01f), p.pos, glm::vec3(0.0f, 0.0f, -1.0f)) :
             glm::lookAt(p.pos, p.pos + p.front, p.up);
 
-        // 1. Draw HUD
-        glDisable(GL_DEPTH_TEST);
-        hudShader.use();
-        hudMesh.draw(0, GL_TRIANGLE_STRIP);
-        glEnable(GL_DEPTH_TEST);
-
-        // 2. Draw Enemy Swarm (Instanced)
         cubeShader.use();
+        cubeShader.setVec3("lightPos", p.pos);
+        cubeShader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f)); // Pure white light
         cubeShader.setMat4("projection", projection);
         cubeShader.setMat4("view", view);
         cubeShader.setVec3("viewPos", cameraPos);
-        cubeShader.setVec3("lightPos", glm::vec3(0.0f, 5.0f, 5.0f));
-        cubeShader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
-        cubeShader.setInt("isInstanced", 1);
 
+        // A. DRAW FLOOR
+        cubeShader.setInt("isInstanced", 0);
+        cubeShader.setMat4("model", ground);
+        planeMesh.draw(0, GL_TRIANGLE_STRIP);
+
+        // B. DRAW ENEMIES (Instanced Cubes)
+        cubeShader.setInt("isInstanced", 1);
         cubeMesh.updateInstances(cubes.data(), cubes.size() * sizeof(CubeInstance));
         cubeMesh.draw(static_cast<int>(cubes.size()));
+
+        //draw pillars
+        cubeShader.setInt("isInstanced", 0); // Single object mode
+        for (auto& pill : pillars) {
+            glm::mat4 pillarModel = glm::mat4(1.0f);
+            pillarModel = glm::translate(pillarModel, pill.pos);
+            pillarModel = glm::scale(pillarModel, glm::vec3(1.0f));
+            cubeShader.setMat4("model", pillarModel);
+            cubeShader.setVec3("playerColor", pill.color);
+            pillar.Draw();
+        }
+        //draw floaters
+        glm::mat4 floaterModel = glm::mat4(1.0f);
+        floaterModel = glm::translate(floaterModel, glm::vec3(0.0f, 10.0f, 0.0f));
+        cubeShader.setMat4("model", floaterModel);
+        cubeShader.setVec3("playerColor", glm::vec3(1.0f, 1.0f, 1.0f));
+        floater.Draw();
+        //draw emerson
+        glm::mat4 emersonModel = glm::mat4(1.0f);
+        emersonModel = glm::translate(emersonModel, emersons[0].pos);
+        emersonModel = glm::rotate(emersonModel, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+        float angle = (float)glfwGetTime() * 2.0f; // Adjust 2.0f for speed
+        emersonModel = glm::rotate(emersonModel, angle, glm::vec3(0.0f, 0.0f, 1.0f));
+        cubeShader.setMat4("model", emersonModel);
+        cubeShader.setVec3("playerColor", glm::vec3(1.0f, 0.0f, 1.0f));
+        emers.Draw();
+        // --- DEBUG: DRAW ROTATED HITBOX ---
+        glm::vec3 size = emers.maxBounds - emers.minBounds;
+        glm::vec3 center = (emers.minBounds + emers.maxBounds) / 2.0f;
+
+        glm::mat4 debugModel = glm::mat4(1.0f);
+        debugModel = glm::translate(debugModel, emersons[0].pos);
+
+        // Match the Emerson Render Rotations exactly
+        debugModel = glm::rotate(debugModel, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+        debugModel = glm::rotate(debugModel, (float)glfwGetTime() * 2.0f, glm::vec3(0.0f, 0.0f, 1.0f));
+
+        // Apply local offset and scale
+        debugModel = glm::translate(debugModel, center);
+        debugModel = glm::scale(debugModel, size);
+
+        cubeShader.setMat4("model", debugModel);
+
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        cubeMesh.draw();
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        // --- C. DRAW PROJECTILES (.obj Models) ---
+        cubeShader.setInt("isInstanced", 0); // Single object mode
+        for (auto& proj : projectiles) {
+            glm::mat4 bulletModel = glm::mat4(1.0f);
+            bulletModel = glm::translate(bulletModel, proj.pos);
+            // 1. Rotation: Face the direction of travel
+            if (glm::length(proj.vel) > 0.1f) {
+                float angle = atan2(proj.vel.x, proj.vel.z);
+                bulletModel = glm::rotate(bulletModel, angle, glm::vec3(0, 1, 0));
+            }
+            // 2. Rotation: Apply any spinning from proj.rotation
+            bulletModel = glm::rotate(bulletModel, proj.rotation.x, glm::vec3(1, 0, 0));
+            bulletModel = glm::rotate(bulletModel, proj.rotation.y, glm::vec3(0, 1, 0));
+            bulletModel = glm::rotate(bulletModel, proj.rotation.z, glm::vec3(0, 0, 1));
+            // 3. Scale: Adjust based on your .obj size
+            bulletModel = glm::scale(bulletModel, glm::vec3(0.1f));
+            cubeShader.setMat4("model", bulletModel);
+            // 4. Color: Pass the struct color to the 'playerColor' uniform
+            cubeShader.setVec3("playerColor", proj.color);
+            myModel.Draw();
+        }
+        cubeShader.use();
+        cubeShader.setInt("isInstanced", 0);
+
+        for (auto& p : splashParticles) {
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, p.pos);
+            float size = 0.3f * p.life;
+            model = glm::scale(model, glm::vec3(size));
+            //model = glm::rotate(model, (float)glfwGetTime() * 5.0f, glm::vec3(0, 0, 0));
+
+            cubeShader.setMat4("model", model);
+            cubeShader.setVec3("playerColor", p.color);
+            cubeMesh.draw();
+        }
 
         // 3. Draw Health Bars (Billboards)
         cubeShader.setInt("isInstanced", 0);
@@ -184,6 +280,36 @@ int main() {
                 // Green Foreground
                 glm::mat4 fgBase = glm::translate(model, glm::vec3(-0.5f * (1.0f - cube.health), 0.0f, 0.01f));
                 glm::mat4 fgModel = glm::scale(fgBase, glm::vec3(cube.health, 0.1f, 0.01f));
+                cubeShader.setMat4("model", fgModel);
+                cubeShader.setVec3("playerColor", glm::vec3(0.0f, 1.0f, 0.0f));
+                cubeMesh.draw();
+            }
+        }
+        for (auto& emerson : emersons) {
+            if (emerson.health > 0.0f) {
+                // 1. Calculate health percentage (assuming 1000 is max health)
+                float healthPct = emerson.health / 1000.0f;
+
+                glm::vec3 barPos = emerson.pos + glm::vec3(0.0f, 4.5f, 0.0f); // Adjust height (1.5f) for Emerson's size
+                glm::mat4 model = glm::mat4(1.0f);
+                model = glm::translate(model, barPos);
+
+                // Billboard logic (keep this part the same)
+                model[0][0] = view[0][0]; model[0][1] = view[1][0]; model[0][2] = view[2][0];
+                model[1][0] = view[0][1]; model[1][1] = view[1][1]; model[1][2] = view[2][1];
+                model[2][0] = view[0][2]; model[2][1] = view[1][2]; model[2][2] = view[2][2];
+
+                // Red Background (Fixed width of 1.0)
+                glm::mat4 bgModel = glm::scale(model, glm::vec3(1.0f, 0.1f, 0.01f));
+                cubeShader.setMat4("model", bgModel);
+                cubeShader.setVec3("playerColor", glm::vec3(1.0f, 0.0f, 0.0f));
+                cubeMesh.draw();
+
+                // Green Foreground (Scaled by percentage)
+                // Offset moves the bar to start at the left edge of the red background
+                glm::mat4 fgBase = glm::translate(model, glm::vec3(-0.5f * (1.0f - healthPct), 0.0f, 0.01f));
+                glm::mat4 fgModel = glm::scale(fgBase, glm::vec3(healthPct, 0.1f, 0.01f));
+
                 cubeShader.setMat4("model", fgModel);
                 cubeShader.setVec3("playerColor", glm::vec3(0.0f, 1.0f, 0.0f));
                 cubeMesh.draw();
@@ -251,6 +377,18 @@ int main() {
             if (ImGui::SliderInt("Colliders", &tempColliders, 0, 50)) {
                 colliders = tempColliders;
             }
+            //tempX = projectiles[0].rotation.x;
+            //if (ImGui::SliderFloat("RotationY", &tempX, 0.0f, 359.99f)) {
+            //    projectiles[0].rotation.x = tempX;
+            //}
+            //tempY = projectiles[0].rotation.y;
+            //if (ImGui::SliderFloat("RotationY", &tempY, 0.0f, 359.99f)) {
+            //    projectiles[0].rotation.y = tempY;
+            //}
+            //tempZ = projectiles[0].rotation.z;
+            //if (ImGui::SliderFloat("RotationZ", &tempZ, 0.0f, 359.99f)) {
+            //    projectiles[0].rotation.z = tempZ;
+            //}
             if (ImGui::Button("Reset Player", ImVec2(200, 0))) {
                 resetPlayer();
             }
@@ -273,10 +411,10 @@ int main() {
         ImGui::Text("Shots Hit: %d", totalHits);
         if (totalClicks > 0) {
             float accuracy = ((float)totalHits / (float)totalClicks) * 100.0f;
-            ImGui::Text("Accuracy: %.1f%%", accuracy);
+            ImGui::Text("Accuracy: %.1f%", accuracy);
         }
         else {
-            ImGui::Text("Accuracy: 0%%");
+            ImGui::Text("Accuracy: 0%");
         }
         const char* rank = "Novice";
         ImGui::Text("Current Rank: ");
